@@ -8,24 +8,15 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 
-class MethodCallHandlerImpl(messenger: BinaryMessenger, private var activity: Activity?) : MethodCallHandler {
-
+class MethodCallHandlerImpl(messenger: BinaryMessenger, private val activity: Activity?) : MethodCallHandler {
     private var channel: MethodChannel? = null
     private var authDelegate: AuthDelegate? = null
 
     init {
-        setupChannelAndDelegate(messenger)
-    }
-
-    // Initialize the channel and delegate
-    private fun setupChannelAndDelegate(messenger: BinaryMessenger) {
-        activity?.let { currentActivity ->
-            authDelegate = AuthDelegate(currentActivity)
+        activity!!.let {
+            authDelegate = AuthDelegate(it)
             channel = MethodChannel(messenger, channelName)
             channel?.setMethodCallHandler(this)
-        } ?: run {
-            // If activity is null, log or handle appropriately
-            println("Activity is null in MethodCallHandlerImpl initialization")
         }
     }
 
@@ -33,46 +24,24 @@ class MethodCallHandlerImpl(messenger: BinaryMessenger, private var activity: Ac
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "getDeviceId" -> {
-                // Safely retrieve the device ID
-                val deviceId = activity?.contentResolver?.let {
-                    Settings.Secure.getString(it, Settings.Secure.ANDROID_ID)
-                }
-                if (deviceId != null) {
-                    result.success("androidsdk_$deviceId")
-                } else {
-                    result.error("UNAVAILABLE", "Device ID not available", null)
-                }
+                val deviceId = Settings.Secure.getString(activity?.contentResolver, Settings.Secure.ANDROID_ID)
+                result.success("androidsdk_$deviceId")
             }
             "getAuthorization" -> {
-                // Handle authorization using the delegate
                 authDelegate?.handleAuthorization(result, call)
             }
             "getEncryptedData" -> {
-                // Encrypt the data and return it
-                val stringData = call.argument<String>("stringData")
-                if (stringData != null) {
-                    val encryptedData = Crypto.encrypt(stringData)
-                    result.success(encryptedData)
-                } else {
-                    result.error("INVALID_ARGUMENT", "stringData is null", null)
-                }
+                val encryptedData = Crypto.encrypt(call.argument<String>("stringData").toString())
+                result.success(encryptedData)
             }
-            else -> {
-                result.notImplemented()
-            }
+
+            else -> result.notImplemented()
         }
     }
 
-    // Disposes of the method channel when it's no longer needed
     fun disposeHandler() {
         channel?.setMethodCallHandler(null)
         channel = null
-    }
-
-    // Update the activity if it changes
-    fun updateActivity(newActivity: Activity?) {
-        activity = newActivity
-        authDelegate = newActivity?.let { AuthDelegate(it) }
     }
 }
 

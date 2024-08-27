@@ -1,14 +1,15 @@
 package co.paystack.flutterpaystack
 
 import android.util.Base64
+
 import java.security.KeyFactory
 import java.security.NoSuchAlgorithmException
 import java.security.PublicKey
 import java.security.spec.InvalidKeySpecException
 import java.security.spec.X509EncodedKeySpec
+
 import javax.crypto.Cipher
-import javax.crypto.IllegalBlockSizeException
-import javax.crypto.NoSuchPaddingException
+
 
 /**
  * Class for encrypting the card details, for token creation.
@@ -20,43 +21,59 @@ object Crypto {
     private const val PAYSTACK_RSA_PUBLIC_KEY = "MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBANIsL+RHqfkBiKGn/D1y1QnNrMkKzxWP" +
             "2wkeSokw2OJrCI+d6YGJPrHHx+nmb/Qn885/R01Gw6d7M824qofmCvkCAwEAAQ=="
     private const val ALGORITHM = "RSA"
-    private const val CIPHER_TRANSFORMATION = "RSA/ECB/PKCS1Padding"
+    private const val CIPHER = "RSA/ECB/PKCS1Padding"
 
-    private fun encrypt(text: String, key: PublicKey): ByteArray {
-        return try {
-            val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
+    private fun encrypt(text: String, key: PublicKey): ByteArray? {
+        var cipherText: ByteArray? = null
+
+        try {
+
+            // get an RSA cipher object
+            val cipher = Cipher.getInstance(CIPHER)
+
+            //init cipher and encrypt the plain text using the public key
             cipher.init(Cipher.ENCRYPT_MODE, key)
-            cipher.doFinal(text.toByteArray())
-        } catch (e: NoSuchPaddingException) {
-            throw SecurityException("Padding error: ${e.message}", e)
-        } catch (e: NoSuchAlgorithmException) {
-            throw SecurityException("Algorithm error: ${e.message}", e)
-        } catch (e: InvalidKeySpecException) {
-            throw SecurityException("Invalid key spec: ${e.message}", e)
-        } catch (e: IllegalBlockSizeException) {
-            throw SecurityException("Block size error: ${e.message}", e)
+            cipherText = cipher.doFinal(text.toByteArray())
+
         } catch (e: Exception) {
-            throw SecurityException("Encryption error: ${e.message}", e)
+
+            e.printStackTrace()
         }
+
+        return cipherText
     }
+    
 
     @Throws(SecurityException::class)
     fun encrypt(text: String): String {
-        val encryptedBytes = encrypt(text, getPublicKeyFromString(PAYSTACK_RSA_PUBLIC_KEY))
-        return String(Base64.encode(encryptedBytes, Base64.NO_WRAP))
+        return String(Base64.encode(encrypt(text, getPublicKeyFromString(PAYSTACK_RSA_PUBLIC_KEY)), Base64.NO_WRAP))
     }
+    
 
     @Throws(SecurityException::class)
     private fun getPublicKeyFromString(pubKey: String): PublicKey {
-        return try {
-            val keyFactory = KeyFactory.getInstance(ALGORITHM)
+
+        val key: PublicKey
+
+        try {
+            //init keyFactory
+            val kf = KeyFactory.getInstance(ALGORITHM)
+
+            //decode the key into a byte array
             val keyBytes = Base64.decode(pubKey, Base64.NO_WRAP)
-            val keySpec = X509EncodedKeySpec(keyBytes)
-            keyFactory.generatePublic(keySpec)
+
+            //create spec
+            val spec = X509EncodedKeySpec(keyBytes)
+
+            //generate public key
+            key = kf.generatePublic(spec)
         } catch (e: InvalidKeySpecException) {
-            throw SecurityException("Invalid public key: ${e.message}", e)
+            throw SecurityException("Invalid public key: " + e.message)
         } catch (e: NoSuchAlgorithmException) {
-            throw SecurityException("Invalid algorithm: ${e.message}", e)
+            throw SecurityException("Invalid public key: " + e.message)
         }
+
+        return key
+
     }
 }

@@ -2,13 +2,11 @@ package co.paystack.flutterpaystack
 
 import android.app.Activity
 import android.content.Intent
-import android.os.Handler
-import android.os.Looper
+import android.os.AsyncTask
 import android.util.Log
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.lang.ref.WeakReference
-import java.util.concurrent.Executors
 
 /**
  * Created by Wilberforce on 26/07/18 at 18:35.
@@ -22,13 +20,8 @@ class AuthDelegate(private val activity: Activity) {
             finishWithPendingAuthError()
             return
         }
-
-        val authUrl: String? = methodCall.argument("authUrl")
-        if (authUrl != null) {
-            AuthExecutor(WeakReference(activity), WeakReference(onAuthCompleteListener)).execute(authUrl)
-        } else {
-            finishWithError("invalid_auth_url", "Authorization URL is missing")
-        }
+        AuthAsyncTask(WeakReference(activity), WeakReference(onAuthCompleteListener))
+                .execute(methodCall.argument("authUrl"))
     }
 
     private val onAuthCompleteListener = object : OnAuthCompleteListener {
@@ -36,6 +29,7 @@ class AuthDelegate(private val activity: Activity) {
             finishWithSuccess(webResponse)
         }
     }
+
 
     private fun setPendingResult(result: MethodChannel.Result): Boolean {
         return if (pendingResult == null) {
@@ -66,43 +60,41 @@ class AuthDelegate(private val activity: Activity) {
     }
 }
 
-private class AuthExecutor(
-    private val activityRef: WeakReference<Activity>,
-    private val listenerRef: WeakReference<OnAuthCompleteListener>
-) {
+private class AuthAsyncTask(val activityRef: WeakReference<Activity>, val listenerRef:
+WeakReference<OnAuthCompleteListener>) : AsyncTask<String,
+        Void, String>() {
 
-    private val executor = Executors.newSingleThreadExecutor()
-    private val handler = Handler(Looper.getMainLooper())
 
-    fun execute(authUrl: String) {
-        executor.execute {
-            val authSingleton = AuthSingleton.instance
-            authSingleton.url = authUrl
-            Log.e("AuthExecutor", "Executing Auth: ${authSingleton.url}")
+    override fun doInBackground(vararg params: String): String {
+        val authSingleton = AuthSingleton.instance
+        authSingleton.url = params[0]
+        Log.e("AuthAsyncTask", "doInBackground (line 70): ${authSingleton.url}")
+        val activity = activityRef.get()
+        if (activity != null) {
+            val i = Intent(activity, AuthActivity::class.java)
+            activity.startActivity(i)
 
-            val activity = activityRef.get()
-            if (activity != null) {
-                val intent = Intent(activity, AuthActivity::class.java)
-                activity.startActivity(intent)
-
-                synchronized(authSingleton) {
-                    try {
-                        (authSingleton as Object).wait()
-                    } catch (e: InterruptedException) {
-                        return@execute
-                    }
+            synchronized(authSingleton) {
+                try {
+                    (authSingleton as Object).wait()
+                } catch (e: InterruptedException) {
+                    return authSingleton.responseJson
                 }
-            }
 
-            val responseJson = authSingleton.responseJson
-
-            handler.post {
-                listenerRef.get()?.onComplete(responseJson)
             }
         }
+
+        return authSingleton.responseJson
+    }
+
+    override fun onPostExecute(responseJson: String) {
+        super.onPostExecute(responseJson)
+        listenerRef.get()?.onComplete(responseJson)
     }
 }
 
 interface OnAuthCompleteListener {
-    fun onComplete(webResponse: String)
+    fun onComplete(webResponse: String) {
+
+    }
 }
