@@ -35,7 +35,7 @@ class AuthActivity : Activity() {
         }
         synchronized(si) {
             si.responseJson = responseJson!!
-            si.notify()
+            (si as Object).notifyAll() // Notify all waiting threads
         }
         finish()
     }
@@ -46,11 +46,10 @@ class AuthActivity : Activity() {
             settings.apply {
                 javaScriptEnabled = true
                 javaScriptCanOpenWindowsAutomatically = true
-                domStorageEnabled = true // Enables DOM storage
-                cacheMode = WebSettings.LOAD_DEFAULT // Ensures web content loads properly
+                domStorageEnabled = true // Ensures WebView has access to storage, if needed
+                cacheMode = WebSettings.LOAD_DEFAULT // Ensures web content loads appropriately
             }
 
-            // Create the correct AuthResponseJI instance based on Android version
             val authResponseJI = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
                 AuthResponse17JI()
             } else {
@@ -65,21 +64,25 @@ class AuthActivity : Activity() {
                         view.loadUrl("javascript:window.INTERFACE.processContent(document.getElementById('return').innerText);")
                     }
                 }
+
+                override fun onLoadResource(view: WebView, url: String) {
+                    super.onLoadResource(view, url)
+                }
             }
 
             loadUrl(si.url)
         }
     }
 
-    // Handle resource management on activity pause and resume
+    // Ensure resources are released properly
     override fun onPause() {
         super.onPause()
-        webView?.onPause() // Suspend WebView resources
+        webView?.onPause() // Suspend WebView timers and resources
     }
 
     override fun onResume() {
         super.onResume()
-        webView?.onResume() // Resume WebView resources
+        webView?.onResume() // Resume WebView timers and resources
     }
 
     override fun onDestroy() {
@@ -88,18 +91,16 @@ class AuthActivity : Activity() {
             removeJavascriptInterface("INTERFACE")
             clearCache(true)
             clearHistory()
-            destroy() // Completely destroy the WebView instance
+            destroy() // Completely destroys the WebView instance
         }
         handleResponse()
         super.onDestroy()
     }
 
-    // Abstract class for processing authentication responses
     abstract class AuthResponseJI {
         abstract fun processContent(aContent: String)
     }
 
-    // Handles processing content for legacy versions of Android
     class AuthResponseLegacyJI : AuthResponseJI() {
         override fun processContent(aContent: String) {
             responseJson = aContent
@@ -107,7 +108,6 @@ class AuthActivity : Activity() {
         }
     }
 
-    // Handles processing content for Android versions with support for JavascriptInterface annotations
     class AuthResponse17JI : AuthResponseJI() {
         @JavascriptInterface
         override fun processContent(aContent: String) {
