@@ -13,10 +13,13 @@ class MethodCallHandlerImpl(messenger: BinaryMessenger, private val activity: Ac
     private var authDelegate: AuthDelegate? = null
 
     init {
-        activity!!.let {
+        activity?.let {
             authDelegate = AuthDelegate(it)
             channel = MethodChannel(messenger, channelName)
             channel?.setMethodCallHandler(this)
+        } ?: run {
+            // Handle the case when the activity is null
+            println("Activity is null during MethodCallHandlerImpl initialization")
         }
     }
 
@@ -24,18 +27,35 @@ class MethodCallHandlerImpl(messenger: BinaryMessenger, private val activity: Ac
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "getDeviceId" -> {
-                val deviceId = Settings.Secure.getString(activity?.contentResolver, Settings.Secure.ANDROID_ID)
-                result.success("androidsdk_$deviceId")
+                val deviceId = activity?.contentResolver?.let {
+                    Settings.Secure.getString(it, Settings.Secure.ANDROID_ID)
+                }
+
+                if (deviceId != null) {
+                    result.success("androidsdk_$deviceId")
+                } else {
+                    result.error("UNAVAILABLE", "Device ID not available", null)
+                }
             }
             "getAuthorization" -> {
                 authDelegate?.handleAuthorization(result, call)
             }
             "getEncryptedData" -> {
-                val encryptedData = Crypto.encrypt(call.argument<String>("stringData").toString())
-                result.success(encryptedData)
+                val stringData = call.argument<String>("stringData")
+                if (stringData != null) {
+                    try {
+                        val encryptedData = Crypto.encrypt(stringData)
+                        result.success(encryptedData)
+                    } catch (e: Exception) {
+                        result.error("ENCRYPTION_ERROR", "Failed to encrypt data", e.localizedMessage)
+                    }
+                } else {
+                    result.error("INVALID_ARGUMENT", "stringData is null", null)
+                }
             }
-
-            else -> result.notImplemented()
+            else -> {
+                result.notImplemented()
+            }
         }
     }
 

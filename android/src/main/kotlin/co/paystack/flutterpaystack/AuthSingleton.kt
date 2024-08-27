@@ -1,14 +1,12 @@
 package co.paystack.flutterpaystack
 
 /**
+ * Singleton class to hold authorization response and URL.
  * Created by Wilberforce on 29/07/18 at 06:00.
  */
-class AuthSingleton private constructor() {
-    var responseJson = "{\"status\":\"requery\",\"message\":\"Reaffirm Transaction Status on Server\"}"
-    var url = ""
-
-    companion object {
-        val instance = AuthSingleton()
-    }
-
+object AuthSingleton {
+    @Volatile
+    var responseJson: String = "{\"status\":\"requery\",\"message\":\"Reaffirm Transaction Status on Server\"}"
+    @Volatile
+    var url: String = ""
 }
