@@ -8,13 +8,19 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 
-class MethodCallHandlerImpl(messenger: BinaryMessenger, private val activity: Activity?) : MethodCallHandler {
+class MethodCallHandlerImpl(messenger: BinaryMessenger, private var activity: Activity?) : MethodCallHandler {
+
     private var channel: MethodChannel? = null
     private var authDelegate: AuthDelegate? = null
 
     init {
-        activity?.let {
-            authDelegate = AuthDelegate(it)
+        setupChannelAndDelegate(messenger)
+    }
+
+    // Initialize the channel and delegate
+    private fun setupChannelAndDelegate(messenger: BinaryMessenger) {
+        activity?.let { currentActivity ->
+            authDelegate = AuthDelegate(currentActivity)
             channel = MethodChannel(messenger, channelName)
             channel?.setMethodCallHandler(this)
         } ?: run {
@@ -27,7 +33,8 @@ class MethodCallHandlerImpl(messenger: BinaryMessenger, private val activity: Ac
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "getDeviceId" -> {
-                val deviceId = activity?.contentResolver?.let { 
+                // Safely retrieve the device ID
+                val deviceId = activity?.contentResolver?.let {
                     Settings.Secure.getString(it, Settings.Secure.ANDROID_ID)
                 }
                 if (deviceId != null) {
@@ -37,9 +44,11 @@ class MethodCallHandlerImpl(messenger: BinaryMessenger, private val activity: Ac
                 }
             }
             "getAuthorization" -> {
+                // Handle authorization using the delegate
                 authDelegate?.handleAuthorization(result, call)
             }
             "getEncryptedData" -> {
+                // Encrypt the data and return it
                 val stringData = call.argument<String>("stringData")
                 if (stringData != null) {
                     val encryptedData = Crypto.encrypt(stringData)
@@ -54,9 +63,16 @@ class MethodCallHandlerImpl(messenger: BinaryMessenger, private val activity: Ac
         }
     }
 
+    // Disposes of the method channel when it's no longer needed
     fun disposeHandler() {
         channel?.setMethodCallHandler(null)
         channel = null
+    }
+
+    // Update the activity if it changes
+    fun updateActivity(newActivity: Activity?) {
+        activity = newActivity
+        authDelegate = newActivity?.let { AuthDelegate(it) }
     }
 }
 
