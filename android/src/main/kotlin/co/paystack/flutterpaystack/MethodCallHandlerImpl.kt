@@ -13,10 +13,13 @@ class MethodCallHandlerImpl(messenger: BinaryMessenger, private val activity: Ac
     private var authDelegate: AuthDelegate? = null
 
     init {
-        activity!!.let {
+        activity?.let {
             authDelegate = AuthDelegate(it)
             channel = MethodChannel(messenger, channelName)
             channel?.setMethodCallHandler(this)
+        } ?: run {
+            // If activity is null, log or handle appropriately
+            println("Activity is null in MethodCallHandlerImpl initialization")
         }
     }
 
@@ -24,18 +27,30 @@ class MethodCallHandlerImpl(messenger: BinaryMessenger, private val activity: Ac
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "getDeviceId" -> {
-                val deviceId = Settings.Secure.getString(activity?.contentResolver, Settings.Secure.ANDROID_ID)
-                result.success("androidsdk_$deviceId")
+                val deviceId = activity?.contentResolver?.let { 
+                    Settings.Secure.getString(it, Settings.Secure.ANDROID_ID)
+                }
+                if (deviceId != null) {
+                    result.success("androidsdk_$deviceId")
+                } else {
+                    result.error("UNAVAILABLE", "Device ID not available", null)
+                }
             }
             "getAuthorization" -> {
                 authDelegate?.handleAuthorization(result, call)
             }
             "getEncryptedData" -> {
-                val encryptedData = Crypto.encrypt(call.argument<String>("stringData").toString())
-                result.success(encryptedData)
+                val stringData = call.argument<String>("stringData")
+                if (stringData != null) {
+                    val encryptedData = Crypto.encrypt(stringData)
+                    result.success(encryptedData)
+                } else {
+                    result.error("INVALID_ARGUMENT", "stringData is null", null)
+                }
             }
-
-            else -> result.notImplemented()
+            else -> {
+                result.notImplemented()
+            }
         }
     }
 

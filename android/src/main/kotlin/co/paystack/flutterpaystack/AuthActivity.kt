@@ -5,6 +5,7 @@ import android.app.Activity
 import android.os.Build
 import android.os.Bundle
 import android.webkit.JavascriptInterface
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 
@@ -25,10 +26,10 @@ class AuthActivity : Activity() {
         setContentView(R.layout.co_paystack_android____activity_auth)
         webView = findViewById(R.id.webView)
         title = "Authorize your card"
-        setup()
+        setupWebView()
     }
 
-    fun handleResponse() {
+    private fun handleResponse() {
         if (responseJson == null) {
             responseJson = "{\"status\":\"requery\",\"message\":\"Reaffirm Transaction Status on Server\"}"
         }
@@ -40,63 +41,78 @@ class AuthActivity : Activity() {
     }
 
     @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
-    private fun setup() {
-        webView?.keepScreenOn = true
-
-        abstract class AuthResponseJI {
-            abstract fun processContent(aContent: String)
-        }
-
-        class AuthResponseLegacyJI : AuthResponseJI() {
-            override fun processContent(aContent: String) {
-                responseJson = aContent
-                handleResponse()
+    private fun setupWebView() {
+        webView?.apply {
+            settings.apply {
+                javaScriptEnabled = true
+                javaScriptCanOpenWindowsAutomatically = true
+                domStorageEnabled = true // Ensures WebView has access to storage, if needed
+                cacheMode = WebSettings.LOAD_DEFAULT // Ensures web content loads appropriately
             }
-        }
 
-        class AuthResponse17JI : AuthResponseJI() {
-
-            @JavascriptInterface
-            override fun processContent(aContent: String) {
-                responseJson = aContent
-                handleResponse()
+            val authResponseJI = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+                AuthResponse17JI()
+            } else {
+                AuthResponseLegacyJI()
             }
-        }
 
-        class JIFactory {
+            addJavascriptInterface(authResponseJI, "INTERFACE")
 
-            val ji: AuthResponseJI
-                get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
-                    AuthResponse17JI()
-                } else {
-                    AuthResponseLegacyJI()
+            webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView, url: String) {
+                    if (url.contains("$API_URL/charge/three_d_response/")) {
+                        view.loadUrl("javascript:window.INTERFACE.processContent(document.getElementById('return').innerText);")
+                    }
                 }
-        }
 
-
-        webView?.settings?.javaScriptEnabled = true
-        webView?.settings?.javaScriptCanOpenWindowsAutomatically = true
-        webView?.addJavascriptInterface(JIFactory().ji, "INTERFACE")
-        webView?.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView, url: String) {
-                if (url.contains(API_URL + "charge/three_d_response/")) {
-                    view.loadUrl("javascript:window.INTERFACE.processContent(document.getElementById('return').innerText);")
+                override fun onLoadResource(view: WebView, url: String) {
+                    super.onLoadResource(view, url)
                 }
             }
 
-            override fun onLoadResource(view: WebView, url: String) {
-                super.onLoadResource(view, url)
-            }
+            loadUrl(si.url)
         }
-
-        webView?.loadUrl(si.url)
     }
 
-    public override fun onDestroy() {
-        super.onDestroy()
-        webView?.stopLoading()
-        webView?.removeJavascriptInterface("INTERFACE")
+    // Ensure resources are released properly
+    override fun onPause() {
+        super.onPause()
+        webView?.onPause() // Suspend WebView timers and resources
+    }
+
+    override fun onResume() {
+        super.onResume()
+        webView?.onResume() // Resume WebView timers and resources
+    }
+
+    override fun onDestroy() {
+        webView?.apply {
+            stopLoading()
+            removeJavascriptInterface("INTERFACE")
+            clearCache(true)
+            clearHistory()
+            destroy() // Completely destroys the WebView instance
+        }
         handleResponse()
+        super.onDestroy()
     }
 
+    abstract class AuthResponseJI {
+        abstract fun processContent(aContent: String)
+    }
+
+    class AuthResponseLegacyJI : AuthResponseJI() {
+        override fun processContent(aContent: String) {
+            responseJson = aContent
+            handleResponse()
+        }
+    }
+
+    class AuthResponse17JI : AuthResponseJI() {
+        @JavascriptInterface
+        override fun processContent(aContent: String) {
+            responseJson = aContent
+            handleResponse()
+        }
+    }
 }
