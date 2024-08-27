@@ -8,10 +8,6 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 
-/**
- * Created by Wilberforce on 29/07/18 at 18:47.
- */
-
 const val API_URL = "https://standard.paystack.co/"
 
 class AuthActivity : Activity() {
@@ -28,7 +24,7 @@ class AuthActivity : Activity() {
         setup()
     }
 
-    fun handleResponse() {
+    private fun handleResponse() {
         if (responseJson == null) {
             responseJson = "{\"status\":\"requery\",\"message\":\"Reaffirm Transaction Status on Server\"}"
         }
@@ -64,7 +60,6 @@ class AuthActivity : Activity() {
         }
 
         class JIFactory {
-
             val ji: AuthResponseJI
                 get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
                     AuthResponse17JI()
@@ -73,30 +68,34 @@ class AuthActivity : Activity() {
                 }
         }
 
+        webView?.settings?.apply {
+            javaScriptEnabled = true
+            javaScriptCanOpenWindowsAutomatically = true
+        }
 
-        webView?.settings?.javaScriptEnabled = true
-        webView?.settings?.javaScriptCanOpenWindowsAutomatically = true
         webView?.addJavascriptInterface(JIFactory().ji, "INTERFACE")
+
         webView?.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
+                super.onPageFinished(view, url)
                 if (url.contains(API_URL + "charge/three_d_response/")) {
                     view.loadUrl("javascript:window.INTERFACE.processContent(document.getElementById('return').innerText);")
                 }
-            }
-
-            override fun onLoadResource(view: WebView, url: String) {
-                super.onLoadResource(view, url)
             }
         }
 
         webView?.loadUrl(si.url)
     }
 
-    public override fun onDestroy() {
-        super.onDestroy()
-        webView?.stopLoading()
-        webView?.removeJavascriptInterface("INTERFACE")
+    override fun onDestroy() {
+        webView?.apply {
+            stopLoading()
+            clearHistory()
+            clearCache(true)
+            removeJavascriptInterface("INTERFACE")
+            destroy()  // Safely destroy the WebView to prevent memory leaks
+        }
         handleResponse()
+        super.onDestroy()
     }
-
 }

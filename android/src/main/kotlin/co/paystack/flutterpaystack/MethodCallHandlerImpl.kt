@@ -9,32 +9,45 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 
 class MethodCallHandlerImpl(messenger: BinaryMessenger, private val activity: Activity?) : MethodCallHandler {
+
     private var channel: MethodChannel? = null
     private var authDelegate: AuthDelegate? = null
 
     init {
-        activity!!.let {
+        activity?.let {
             authDelegate = AuthDelegate(it)
-            channel = MethodChannel(messenger, channelName)
-            channel?.setMethodCallHandler(this)
-        }
+            channel = MethodChannel(messenger, channelName).apply {
+                setMethodCallHandler(this@MethodCallHandlerImpl)
+            }
+        } ?: throw IllegalArgumentException("Activity cannot be null.")
     }
 
     @SuppressLint("HardwareIds")
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "getDeviceId" -> {
+                // Fetches the device ID and prefixes with "androidsdk_"
                 val deviceId = Settings.Secure.getString(activity?.contentResolver, Settings.Secure.ANDROID_ID)
                 result.success("androidsdk_$deviceId")
             }
             "getAuthorization" -> {
-                authDelegate?.handleAuthorization(result, call)
+                // Handles card authorization via AuthDelegate
+                authDelegate?.handleAuthorization(result, call) ?: result.error(
+                    "AUTH_DELEGATE_ERROR",
+                    "Authorization delegate is not initialized",
+                    null
+                )
             }
             "getEncryptedData" -> {
-                val encryptedData = Crypto.encrypt(call.argument<String>("stringData").toString())
-                result.success(encryptedData)
+                // Encrypts the provided data using the Crypto class
+                try {
+                    val dataToEncrypt = call.argument<String>("stringData") ?: ""
+                    val encryptedData = Crypto.encrypt(dataToEncrypt)
+                    result.success(encryptedData)
+                } catch (e: Exception) {
+                    result.error("ENCRYPTION_ERROR", "Failed to encrypt data: ${e.message}", null)
+                }
             }
-
             else -> result.notImplemented()
         }
     }
