@@ -28,7 +28,7 @@ android {
 
     defaultConfig {
         applicationId "co.paystack.flutterpaystack"
-        minSdkVersion 16
+        minSdkVersion 23
         targetSdkVersion 34
         versionCode 1
         versionName "1.0"
